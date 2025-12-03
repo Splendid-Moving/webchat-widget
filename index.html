@@ -4,81 +4,194 @@
     <meta charset="utf-8" />
     <title>Local ChatKit Test</title>
 
-    <!-- ChatKit script -->
-    <script
-      src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js"
-    ></script>
+<!-- OpenAI ChatKit script -->
+<script
+  src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js"
+  async
+></script>
 
-    <style>
-      body {
-        background: #020617;
-        color: #e5e7eb;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          sans-serif;
-        padding: 32px;
-      }
-      h2 {
-        margin-bottom: 16px;
-      }
-      #chat-box {
-        width: 420px;
-        height: 640px;
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid #1f2937;
-        background: #020617;
-      }
-      openai-chatkit {
-        display: block;
-        width: 100%;
-        height: 100%;
-      }
-    </style>
-  </head>
+<!-- Chat bubble (bottom-right) -->
+<button id="chat-launcher" aria-label="Chat with us" style="
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  z-index: 10000;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+">
+  💬
+</button>
 
-  <body>
-    <h2>Local ChatKit Test</h2>
+<!-- Chat container (hidden by default) -->
+<div id="chat-box" style="
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 380px;
+  max-width: 92vw;
+  height: 520px;
+  max-height: 80vh;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  z-index: 10000;
+  display: none;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+">
 
-    <div id="chat-box">
-      <openai-chatkit id="chat"></openai-chatkit>
+  <!-- Header bar -->
+  <div style="
+    height: 52px;
+    background: #1d4ed8;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+  ">
+    <div style="display: flex; flex-direction: column;">
+      <span>Splendid Moving Assistant</span>
+      <span style="font-size: 12px; font-weight: 400; opacity: 0.9;">
+        Questions? We’ve got you.
+      </span>
     </div>
+    <button id="chat-close" aria-label="Close chat" style="
+      background: transparent;
+      border: none;
+      color: #e5e7eb;
+      cursor: pointer;
+      font-size: 26px;
+      line-height: 1;
+      padding: 4px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      min-width: 32px;
+      min-height: 32px;
+    ">&times;</button>
+  </div>
 
-    <script>
-      async function initChat() {
-        try {
-          // 1) ask our local backend for a session
-          const res = await fetch("/session", { method: "POST" });
-          const data = await res.json();
-          console.log("Session response:", data);
+  <!-- ChatKit element fills the rest -->
+  <div style="
+    width: 100%;
+    height: calc(100% - 52px);
+    background: #f9fafb;
+  ">
+    <openai-chatkit id="chat"></openai-chatkit>
+  </div>
+</div>
 
-          if (!data.client_secret) {
-            throw new Error("No client_secret in /session response");
-          }
+<script>
+  // Per-visitor ID using localStorage
+  function getVisitorId() {
+    try {
+      const key = "splendid_chat_user_id";
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
 
-          // 2) configure the ChatKit element
-          const el = document.getElementById("chat");
+      const newId = "user_" + Math.random().toString(36).substring(2);
+      localStorage.setItem(key, newId);
+      return newId;
+    } catch (e) {
+      // In case localStorage is blocked, fall back to random
+      return "user_" + Math.random().toString(36).substring(2);
+    }
+  }
 
-          el.setOptions({
-            api: {
-              async getClientSecret(existing) {
-                // we keep it dumb for now: always use the one we just got
-                return data.client_secret;
+  (async () => {
+    await customElements.whenDefined("openai-chatkit");
+
+    const chatElement = document.getElementById("chat");
+
+    chatElement.setOptions({
+      api: {
+        async getClientSecret(currentClientSecret) {
+          if (currentClientSecret) return currentClientSecret;
+
+          const userId = getVisitorId();
+
+          const res = await fetch(
+            "https://webchat-widget-production.up.railway.app/session",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
               },
-            },
-            theme: {
-              colorScheme: "dark",
-            },
-            startScreen: {
-              greeting: "Hey, I'm your test agent. Ask me something.",
-            },
-          });
-        } catch (e) {
-          console.error("initChat error:", e);
-        }
-      }
+              body: JSON.stringify({ user: userId }),
+            }
+          );
 
-      // Run after page+script load
-      window.addEventListener("load", initChat);
-    </script>
+          const data = await res.json();
+          return data.client_secret;
+        },
+      },
+      theme: {
+        colorScheme: "light",
+      },
+      startScreen: {
+        greeting: "Hi! 👋 How can we help with your move today?",
+      },
+      // Disable visible history / threads UI
+      history: {
+        enabled: false,
+      },
+      // Change input placeholder text
+      composer: {
+        placeholder: "Type your message",
+      },
+    });
+
+    const launcher = document.getElementById("chat-launcher");
+    const box = document.getElementById("chat-box");
+    const close = document.getElementById("chat-close");
+
+    launcher.addEventListener("click", () => {
+      box.style.display = "block";
+      launcher.style.display = "none";
+    });
+
+    close.addEventListener("click", () => {
+      box.style.display = "none";
+      launcher.style.display = "flex";
+    });
+
+    function adjustForViewport() {
+      if (window.innerWidth < 480) {
+        // Mobile: almost full width & taller
+        box.style.right = "8px";
+        box.style.width = "calc(100vw - 16px)";
+        box.style.bottom = "16px";
+        box.style.height = "70vh";
+        box.style.maxHeight = "70vh";
+      } else {
+        // Desktop / tablet: fixed size
+        box.style.right = "20px";
+        box.style.width = "380px";
+        box.style.bottom = "90px";
+        box.style.height = "520px";
+        box.style.maxHeight = "80vh";
+      }
+    }
+
+    adjustForViewport();
+    window.addEventListener("resize", adjustForViewport);
+  })();
+</script>
   </body>
 </html>
